@@ -2035,7 +2035,6 @@ runs:
         fi
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
-        
         echo "✅ Other patches applied"
         echo "::endgroup::"
 
