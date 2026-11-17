@@ -11,6 +11,11 @@
 # "Parse op_config_json" step (space-separated token list, empty by default).
 # Recognised tokens:
 #   ptrace          - skip gki_ptrace.patch (5.15 ptrace_message refactor)
+#   ptrace_fixed    - apply gki_ptrace.patch but relocate its ptrace_message
+#                     clear after looks_like_a_spurious_pid() (keeps the
+#                     anti-leak intent without leaving exec-stopped tracees in
+#                     TASK_TRACED). See scripts/oneplus_compat/
+#                     fix_gki_ptrace_message_leak.py for the analysis.
 #   module_overlay  - skip the module intercept/overlay patch (and its module copy)
 #   fake_config     - skip common/fake_config.patch (embedded /proc/config.gz)
 #   netsch          - do not force CONFIG_NET_SCH_CAKE / _PIE / _FQ_PIE =y

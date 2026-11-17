@@ -30,7 +30,7 @@ inputs:
     type: boolean
     default: false
   skip_patches:
-    description: '诊断开关：逗号分隔的“跳过”列表，用于逐个排除上游无条件应用、但原厂内核没有的补丁/配置。可用 token：ptrace（gki_ptrace.patch）、module_overlay（模块拦截/覆写补丁及其模块拷贝）、fake_config（伪造 /proc/config.gz）、netsch（不强开 NET_SCH_CAKE/_PIE/_FQ_PIE）、tmpfs（不强开 TMPFS_XATTR/_POSIX_ACL）。留空=按上游全量应用'
+    description: '诊断开关：逗号分隔的“跳过”列表，用于逐个排除上游无条件应用、但原厂内核没有的补丁/配置。可用 token：ptrace（gki_ptrace.patch）、module_overlay（模块拦截/覆写补丁及其模块拷贝）、fake_config（伪造 /proc/config.gz）、netsch（不强开 NET_SCH_CAKE/_PIE/_FQ_PIE）、tmpfs（不强开 TMPFS_XATTR/_POSIX_ACL）、ptrace_fixed（打 gki_ptrace.patch 但把它的清零挪到 spurious-pid 判定之后）。留空=按上游全量应用'
     required: false
     type: string
     default: ''
@@ -1890,6 +1890,15 @@ runs:
         elif [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
           echo "Patching ptrace!"
           patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/gki_ptrace.patch"
+          if skip_patch ptrace_fixed; then
+            # Keep the anti-leak hardening but move its clear out of the way of
+            # looks_like_a_spurious_pid(); see the script's header for the full
+            # analysis (early clear => every real PTRACE_EVENT_EXEC stop looks
+            # stale => ptrace_check_attach() returns -ESRCH => tracee stuck in
+            # TASK_TRACED).
+            python3 "$GITHUB_WORKSPACE/scripts/oneplus_compat/fix_gki_ptrace_message_leak.py" \
+              "$COMMON_KERNEL_FOLDER"
+          fi
         else
           echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
         fi
