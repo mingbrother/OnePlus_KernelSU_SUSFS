@@ -1832,6 +1832,23 @@ runs:
         if ! wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash -s main; then
           echo "::warning::BBG setup script failed, continuing anyway"
         fi
+        # BBG's is_protected_blkdev() calls inode->i_op->get_link(dentry, inode, NULL)
+        # directly. get_link() writes into the struct delayed_call it is handed, so
+        # passing NULL faults for any symlink that uses page_get_link() (faults in a
+        # syscall path = hard hang / oops of the calling process, e.g. the camera HAL).
+        # Upstream Baseband-guard still carries that line, so switch the fetched tree
+        # to vfs_get_link() before it is compiled in.
+        if [ -f Baseband-guard/baseband_guard.c ] && \
+           grep -qF 'inode->i_op->get_link(dentry, inode, NULL)' Baseband-guard/baseband_guard.c; then
+          echo "Applying BBG get_link NULL delayed_call fix"
+          if patch -p1 --forward < "$KERNEL_PATCHES_FOLDER/experimental/bbg/bbg_fix_get_link.patch"; then
+            echo "✅ BBG get_link fix applied"
+          else
+            echo "::error::BBG get_link fix failed to apply; refusing to ship a kernel that faults on symlink lookups"
+            exit 1
+          fi
+        fi
+
         echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
         sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' common/security/Kconfig
         
@@ -2552,6 +2569,26 @@ runs:
         echo "Disabling Vendor / Kernel Modules"
         cd "$COMMON_KERNEL_FOLDER"
 
+        # Device-config opt-out: an empty blacklist_modules means "do not debloat".
+        #
+        # CONFIG_DEBLOAT_VENDOR_MODULES is NOT a build-time exclusion - the patch
+        # below compiles the list into the Image and kernel/module.c:blacklisted()
+        # then refuses those modules at load_module() time on a normal boot. The
+        # stock ROM keeps every oplus_*.ko on vendor_dlkm (this pipeline only ships
+        # Image), so blocking names such as oplus_security_guard, oplus_secure_harden,
+        # oplus_secure_guard(_new), oplus_security_keventupload, oplus_data_module or
+        # oplus_network_linkpower_module kills the ColorOS cloud stack (云服务 /
+        # HeyTap cloud sync, account, find-my-phone) while leaving the rest of the
+        # system booting fine.
+        #
+        # Returning early is deliberate: the BBR auto-add below appends
+        # oplus_network_tuning/oplus_networks_tuning regardless of the config value,
+        # so only skipping the whole step gives true stock behaviour.
+        if [ -z "${OP_BLACKLIST_MODULES//[[:space:]]/}" ]; then
+          echo "OP_BLACKLIST_MODULES is empty: vendor module debloat disabled, skipping step"
+          exit 0
+        fi
+
         # Define modules that MUST NEVER be blacklisted
         RISKY_MODULES=("coresight" "rust_binder" "msm_kgsl" "camera" "oplusboot" "rmnet_wlan" "rmnet_core" "msm_drm" "cnss2" "oplus_chg_v2" "reboot_mode" "rfkill" "bootloader_log")
         
@@ -2783,7 +2820,12 @@ runs:
         # （官方 GKI 构建中两者均为模块）。本流水线只构建 Image、不打包模块，故与
         # 同平台 n6（OPLUS_NFC 默认 n）保持一致：当 OPLUS_NFC 被启用且 OPROJECT 未启用
         # 时关闭 OPLUS_NFC（该驱动只提供 /proc 信息节点，不影响 NFC 本身功能）。
-        if grep -qE '^CONFIG_OPLUS_NFC=(y|m)' "$OUT/.config" && \
+        # Only for the MTK branches this workaround was written for. On SM8550
+        # (kalama) the stock OnePlus build keeps OPLUS_NFC enabled and links fine,
+        # so leave the vendor driver set untouched: flipping it changes what the
+        # OPLUS HALs find in /proc and is not a change we want to introduce blindly.
+        if [ "${OP_SOC:-}" != "kalama" ] && \
+           grep -qE '^CONFIG_OPLUS_NFC=(y|m)' "$OUT/.config" && \
            ! grep -qE '^CONFIG_OPLUS_FEATURE_OPROJECT=(y|m)' "$OUT/.config"; then
           scripts/config --file "$OUT/.config" -d OPLUS_NFC
           echo "🔧 Disabled CONFIG_OPLUS_NFC (oplus_project unavailable built-in in GKI tree; matches n6 sibling config)"

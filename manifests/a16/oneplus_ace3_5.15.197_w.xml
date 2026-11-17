@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OnePlus ACE3 (PJD110) on ColorOS 16 / GKI 5.15.197.
+
+  OnePlus has not (yet) published a 5.15.197 branch for android_kernel_common_oneplus_sm8550
+  under oneplus/sm8550_b_16.0.0_ace_3 - that branch is still 5.15.180. ACE3 and OnePlus 12R
+  are the same SM8550 board (kalama), so this manifest builds ACE3 from the 12R 5.15.197
+  sources while keeping the ACE3 model name for the AnyKernel3 package.
+
+  Everything else is byte-identical to oneplus_12r_w.xml. If OnePlus later publishes
+  oneplus/sm8550_b_16.0.0_ace_3 at 5.15.197, switch the two `revision` attributes below
+  to that branch and the config name no longer needs the -w suffix logic.
+-->
+<manifest>
+  <remote fetch="https://git.codelinaro.org/clo/la" name="clo-la"/>
+  <default remote="clo-la" revision="dummy_revision" sync-c="true" sync-tags="false"/>
+  <remote fetch="https://github.com/OnePlusOSS" name="origin"/>
+  <remote fetch="https://github.com/WildKernels" name="wild"/>
+  <project remote="wild" name="AnyKernel3" path="AnyKernel3" revision="0b46673ae91aee8d60bd6ee257b4d56d3f6a0114"/>
+  <project remote="origin" name="android_kernel_common_oneplus_sm8550" path="kernel_platform/common" revision="oneplus/sm8550_b_16.0.0_oneplus_12r">
+    <linkfile dest=".source_date_epoch_dir" src="."/>
+  </project>
+  <project remote="origin" name="android_kernel_modules_and_devicetree_oneplus_sm8550" path="./" revision="oneplus/sm8550_b_16.0.0_oneplus_12r"/>
+  <project remote="clo-la" name="kernel/prebuilts/build-tools" path="kernel_platform/prebuilts/kernel-build-tools" revision="a27755ba41db8a1487c7d2ac7d0da22ec5e593c7" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+  <project remote="clo-la" name="kernelplatform/prebuilts-master/clang/host/linux-x86" path="kernel_platform/prebuilts/clang/host/linux-x86" revision="c420e3ab93e51a2f2ab4f8e8b517463c34a7e8bd" upstream="refs/heads/ks-kernel.lnx.2.0.r1-rel"/>
+</manifest>
