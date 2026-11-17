@@ -2257,7 +2257,9 @@ runs:
       # Exec format error、声卡反复 probe defer 等功能性故障。
       run: |
         set -euo pipefail
-        echo "CONFIG_DEVTMPFS=y" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+        # diag: the stock ACE3 5.15.197 kernel ships with CONFIG_DEVTMPFS *unset*;
+        # this repo forces =y. Keep it unset here to match stock exactly.
+        echo "diag: leaving CONFIG_DEVTMPFS unset (stock parity)"
 
     - name: Add Droidspaces support
       shell: bash
@@ -2843,7 +2845,7 @@ runs:
         # 只能是 m，判 =y 会让整个 6.x 矩阵在编译前就被误杀。其余项只打印
         # 实际取值，供排障时对照，不改变构建结果。
         echo "::group::Verify boot-critical configs"
-        if ! grep -qx "CONFIG_DEVTMPFS=y" "$OUT/.config"; then
+        if [ "${OP_MODEL}" != "OP-ACE-3-5.15.197" ] && ! grep -qx "CONFIG_DEVTMPFS=y" "$OUT/.config"; then
           echo "::error::CONFIG_DEVTMPFS is not =y (actual: $(grep -E '^CONFIG_DEVTMPFS=|^# CONFIG_DEVTMPFS ' "$OUT/.config" | head -1 || echo 'absent'))"
           echo "The built Image would NOT boot. Aborting before packaging."
           exit 1
@@ -3186,8 +3188,8 @@ runs:
         # and stamp a ui_print line so the flashing log shows which build ran.
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
-          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (PURE: stock-equivalent, no KSU no SUSFS no patches)"' anykernel.sh
-          grep -q 'PURE' anykernel.sh || {
+          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (NODEVTMPFS: pure without forced devtmpfs)"' anykernel.sh
+          grep -q 'NODEVTMPFS' anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
