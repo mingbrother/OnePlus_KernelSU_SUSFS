@@ -2698,6 +2698,29 @@ runs:
           patch -p1 < "$KERNEL_PATCHES_FOLDER/common/vendor_modules/0001-Support-conditional-vendor-modules-blacklisting-6.1-and-above.patch"
         fi
 
+    - name: Extend swap for full-LTO linking
+      if: ${{ env.OP_LTO == 'full' }}
+      shell: bash
+      # CONFIG_LTO_CLANG_FULL merges the entire kernel into one LTO module, and the
+      # final ld.lld link needs far more resident memory than a 16 GB runner has.
+      # The first full-LTO attempt (run 44107525199) died at link after ~63 min and
+      # never uploaded a log, so rather than retry blind: add swap before linking.
+      run: |
+        set -euo pipefail
+        echo "::group::Add swap for LTO full"
+        free -h || true
+        SWAPFILE=/swapfile_lto
+        SIZE_GB=8
+        sudo fallocate -l "${SIZE_GB}G" "$SWAPFILE" \
+          || sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=$((SIZE_GB * 1024)) status=none
+        sudo chmod 600 "$SWAPFILE"
+        sudo mkswap "$SWAPFILE"
+        sudo swapon "$SWAPFILE"
+        echo 100 | sudo tee /proc/sys/vm/swappiness > /dev/null
+        free -h
+        df -h / || true
+        echo "::endgroup::"
+
     - name: Skip BTF when libelf is unavailable
       shell: bash
       run: |
