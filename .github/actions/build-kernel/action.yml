@@ -1449,7 +1449,7 @@ runs:
           echo "::error::SUSFS Inline 需要设备配置启用 SUSFS"
           exit 1
         fi
-        HOOK_CONFIG="CONFIG_KSU_HOOK_SUSFS_INLINE=y"
+        HOOK_CONFIG="CONFIG_KSU_HOOK_SUSFS_INLINE=n"
         # 6.12 树上 drivers/kernelsu/include 的 -I 未生效（klog.h / arch.h / util.h
         # 走 "klog.h" 形式引用会 fatal error not found），而 -I$(KSU_KERNEL_DIR)
         # 本身是可用的。把 include/ 下的头文件在驱动根目录补一层同名软链，
@@ -3185,8 +3185,8 @@ runs:
         # and stamp a ui_print line so the flashing log shows which build ran.
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
-          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (fix2: no boot-version guard)"' anykernel.sh
-          grep -q 'no boot-version guard' anykernel.sh || {
+          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (TRACEPOINT: FinaSU default hook backend)"' anykernel.sh
+          grep -q 'TRACEPOINT' anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
