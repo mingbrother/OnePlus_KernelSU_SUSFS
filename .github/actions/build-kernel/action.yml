@@ -34,6 +34,11 @@ inputs:
     required: false
     type: string
     default: ''
+  extra_config:
+    description: '诊断/实验用：直接追加到 gki_defconfig 的额外 kconfig 赋值（逗号分隔，例如 CONFIG_PHY_QCOM_QMP=y）。留空=不追加'
+    required: false
+    type: string
+    default: ''
   ksu_commit:
     description: 'Align the kernel-side KSU version source with the latest officially uploaded manager build: BakaSU checks KernelSU out at this commit, SukiSU-Nova rewrites its builtin Makefile REPO_BRANCH to it (empty = follow the passed branch/HEAD)'
     required: false
@@ -172,6 +177,8 @@ runs:
         if [ -n "$SKIP_PATCHES_NORM" ]; then
           echo "::warning::diagnostic mode: skipping [$SKIP_PATCHES_NORM]"
         fi
+        # Diagnostic: verbatim extra kconfig assignments for the defconfig.
+        echo "OP_EXTRA_CONFIG=${{ inputs.extra_config }}" >> "$GITHUB_ENV"
 
     - name: Validate Inputs
       shell: bash
@@ -2697,6 +2704,34 @@ runs:
         else
           patch -p1 < "$KERNEL_PATCHES_FOLDER/common/vendor_modules/0001-Support-conditional-vendor-modules-blacklisting-6.1-and-above.patch"
         fi
+
+    - name: Append extra kconfig (diagnostic)
+      shell: bash
+      run: |
+        set -euo pipefail
+        EXTRA="${OP_EXTRA_CONFIG:-}"
+        # Trim surrounding whitespace only; the value itself is single-line.
+        EXTRA="$(printf '%s' "$EXTRA" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        if [ -z "$EXTRA" ]; then
+          echo "no extra kconfig requested"
+          exit 0
+        fi
+        DEFCONFIG="$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+        echo "::warning::diag: appending extra kconfig: $EXTRA"
+        while IFS= read -r line; do
+          line="$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          [ -n "$line" ] || continue
+          case "$line" in
+            CONFIG_*=*|"# CONFIG_"*)
+              printf '%s\n' "$line" >> "$DEFCONFIG"
+              echo "  + $line" ;;
+            *)
+              echo "::error::extra_config entry is not a kconfig assignment: $line"
+              exit 1 ;;
+          esac
+        done < <(printf '%s' "$EXTRA" | tr ',' '\n')
+        echo "tail of gki_defconfig:"
+        tail -n 12 "$DEFCONFIG" || true
 
     - name: Skip BTF when libelf is unavailable
       shell: bash

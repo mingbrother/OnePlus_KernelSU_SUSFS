@@ -226,6 +226,11 @@ on:
         required: false
         type: string
         default: ''
+      extra_config:
+        description: '诊断：额外追加到 defconfig 的 kconfig（逗号分隔，例：CONFIG_PHY_QCOM_QMP=y）'
+        required: false
+        type: string
+        default: ''
       optimize_level:
         description: '编译器优化级别'
         required: true
@@ -451,6 +456,7 @@ jobs:
             echo "| MLGO | ${{ inputs.mlgo && '✅ enabled' || '❌ disabled' }} |"
             echo "| Droidspaces & NTSync | ${{ inputs.enable_droidspaces_ntsync && '✅ enabled' || '❌ disabled' }} |"
             echo "| Skip patches (diag) | \`${{ inputs.skip_patches || 'none' }}\` |"
+            echo "| Extra kconfig (diag) | \`${{ inputs.extra_config || 'none' }}\` |"
             echo "| Toolchain sync | ${{ inputs.mirror_toolchains && '✅ enabled' || '❌ disabled' }} |"
             echo "| Custom version | \`${{ inputs.custom_version || 'auto (-<android> KMI tag)' }}\` |"
             echo "| Build timestamp | \`${{ inputs.build_timestamp || 'auto (current build time)' }}\` |"
@@ -662,6 +668,7 @@ jobs:
           use_rekernel: ${{ inputs.use_rekernel }}
           use_nomount: ${{ inputs.use_nomount || false }}
           skip_patches: ${{ inputs.skip_patches }}
+          extra_config: ${{ inputs.extra_config }}
           # BakaSU/FinaSU：内核侧检出到官方最新上传 Manager 构建的同一提交（空=跟随 ksu_branch_or_hash）
           ksu_commit: ${{ needs.get-manager.outputs.ksuCommit }}
           # FinaSU：管理器签名证书（内核第二信任槽对齐用，空=构建时回退 Release APK 提取）
