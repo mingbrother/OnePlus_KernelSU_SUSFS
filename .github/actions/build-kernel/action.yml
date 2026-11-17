@@ -3177,7 +3177,23 @@ runs:
             raise SystemExit("AK3 boot version check pattern not found")
         PY
 
-        sed -i 's/do.check_boot_version=.*/do.check_boot_version=1/' anykernel.sh
+        # The boot-partition version guard has to read /dev/block/by-name/boot.
+        # Flash helpers that run the AK3 script inside an app SELinux domain often
+        # cannot do that; tools/ak3-core.sh then calls abort, the flash leaves the
+        # OLD kernel in place and the app still reports success. For the ACE3
+        # 5.15.197 diagnostics we skip the guard so the Image is always written,
+        # and stamp a ui_print line so the flashing log shows which build ran.
+        if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
+          sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
+          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (fix2: no boot-version guard)"' anykernel.sh
+          grep -q 'no boot-version guard' anykernel.sh || {
+            echo "::error::failed to stamp the AK3 banner line"
+            exit 1
+          }
+          echo "AK3: boot version guard disabled, banner stamped"
+        else
+          sed -i 's/do.check_boot_version=.*/do.check_boot_version=1/' anykernel.sh
+        fi
         
         case "$OP_BRANCH" in
           wild/sm8850|wild/sm8845)
