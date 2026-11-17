@@ -1797,8 +1797,8 @@ runs:
         CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
         CONFIG_KSU_SUSFS_TRY_UMOUNT=n
         CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=n
-        CONFIG_KSU_SUSFS_SPOOF_UNAME=n
-        CONFIG_KSU_SUSFS_ENABLE_LOG=n
+        CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+        CONFIG_KSU_SUSFS_ENABLE_LOG=y
         CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
         CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=n
         CONFIG_KSU_SUSFS_OPEN_REDIRECT=n
@@ -1807,7 +1807,7 @@ runs:
         EOF
 
         if [ "$SU_PRIORITY_KCONFIG" = "1" ]; then
-          echo "CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=n" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
         fi
         
         echo "::endgroup::"
