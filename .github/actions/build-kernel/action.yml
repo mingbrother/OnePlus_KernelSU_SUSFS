@@ -1823,9 +1823,18 @@ runs:
         CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
         CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
         CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-        CONFIG_KSU_SUSFS_SUS_MAP=y
         CONFIG_KSU_SUSFS_SUS_SU=n
         EOF
+
+        # SUS_MAP hooks the mmap/smaps path to hide suspicious mappings; it is the
+        # only SUSFS option inside the memory-mapping hot path, so keep it
+        # ablatable (`skip_patches=sus_map`) for bisecting memory-related hangs.
+        source "$GITHUB_WORKSPACE/scripts/diag_skip.sh"
+        if skip_patch sus_map; then
+          echo "::warning::diag: CONFIG_KSU_SUSFS_SUS_MAP not enabled (OP_SKIP_PATCHES)"
+        else
+          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+        fi
 
         if [ "$SU_PRIORITY_KCONFIG" = "1" ]; then
           echo "CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y" >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
