@@ -2322,7 +2322,7 @@ runs:
         echo "::endgroup::"
 
     - name: Add Re-Kernel
-      if: ${{ inputs.use_rekernel }}
+      if: ${{ inputs.use_rekernel == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -2385,7 +2385,7 @@ runs:
         exit 1
 
     - name: Add NoMount
-      if: ${{ inputs.use_nomount }}
+      if: ${{ inputs.use_nomount == 'true' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -3186,8 +3186,8 @@ runs:
         # and stamp a ui_print line so the flashing log shows which build ran.
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
-          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (PURE: stock-equivalent, no KSU no SUSFS no patches)"' anykernel.sh
-          grep -q 'PURE' anykernel.sh || {
+          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (PURENORK: pure, no Re-Kernel/NoMount)"' anykernel.sh
+          grep -q 'PURENORK' anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
