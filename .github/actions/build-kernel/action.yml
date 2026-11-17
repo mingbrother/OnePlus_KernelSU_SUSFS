@@ -1416,6 +1416,12 @@ runs:
         KSU_CERT_HASH: ${{ inputs.ksu_cert_hash }}
       run: |
         set -euo pipefail
+        if [ "${OP_SUSFS}" != "true" ]; then
+          echo "diag(noksu): KSU/SUSFS skipped for the bare-kernel control build"
+          echo "KSUVER=0" >> "$GITHUB_ENV"
+          echo "KSU_COMMIT_SHA=none" >> "$GITHUB_ENV"
+          exit 0
+        fi
         echo "::group::Add FinaSU"
         cd "$KERNEL_PLATFORM_FOLDER"
         echo "Adding FinaSU..."
