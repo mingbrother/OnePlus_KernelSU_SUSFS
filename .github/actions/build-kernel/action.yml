@@ -3282,13 +3282,28 @@ runs:
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
           # Stamp which ablation produced this image, so the flashing log alone
-          # says what actually landed on the device.
+          # says what actually landed on the device. The feature profile matters
+          # as much as the patch list: two packages that differ only by
+          # susfs=/ds=/opt= would otherwise carry an identical banner.
           DIAG_TAG="${OP_SKIP_PATCHES:-}"
           DIAG_TAG="${DIAG_TAG// /-}"
           [ -n "$DIAG_TAG" ] || DIAG_TAG="none"
-          BANNER="${{ inputs.ksu_type }} ${KSUVER:-unknown} ACE3 5.15.197 [skip:$DIAG_TAG]"
+          FEATS=""
+          for pair in "susfs:${OP_SUSFS:-false}" "opt:${OP_OPT:-false}" \
+                      "ds:${OP_DS:-false}" "bbg:${OP_BBG:-false}" \
+                      "bbr3:${OP_BBR3:-false}" "ntsync:${OP_NTSYNC:-false}" \
+                      "unicode:${OP_UNICODE:-false}" "ipset:${OP_IP_SET:-false}"; do
+            fname="${pair%%:*}"
+            fval="${pair##*:}"
+            if [ "$fval" = "true" ]; then
+              FEATS="${FEATS}${fname},"
+            fi
+          done
+          FEATS="${FEATS%,}"
+          [ -n "$FEATS" ] || FEATS="bare"
+          BANNER="${{ inputs.ksu_type }} ${KSUVER:-unknown} ACE3 5.15.197 [skip:$DIAG_TAG] [feat:$FEATS]"
           sed -i "/^\. tools\/ak3-core\.sh\$/a ui_print \" \" \"  -> ${BANNER}\"" anykernel.sh
-          grep -qF "[skip:$DIAG_TAG]" anykernel.sh || {
+          grep -qF "[feat:$FEATS]" anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
