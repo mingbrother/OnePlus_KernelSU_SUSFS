@@ -29,6 +29,11 @@ inputs:
     required: false
     type: boolean
     default: false
+  skip_patches:
+    description: '诊断开关：逗号分隔的“跳过”列表，用于逐个排除上游无条件应用、但原厂内核没有的补丁/配置。可用 token：ptrace（gki_ptrace.patch）、module_overlay（模块拦截/覆写补丁及其模块拷贝）、fake_config（伪造 /proc/config.gz）、netsch（不强开 NET_SCH_CAKE/_PIE/_FQ_PIE）、tmpfs（不强开 TMPFS_XATTR/_POSIX_ACL）。留空=按上游全量应用'
+    required: false
+    type: string
+    default: ''
   ksu_commit:
     description: 'Align the kernel-side KSU version source with the latest officially uploaded manager build: BakaSU checks KernelSU out at this commit, SukiSU-Nova rewrites its builtin Makefile REPO_BRANCH to it (empty = follow the passed branch/HEAD)'
     required: false
@@ -158,6 +163,15 @@ runs:
         jq -r 'to_entries[] | "OP_\(.key | ascii_upcase)=\(.value)"' /tmp/config.json >> "$GITHUB_ENV"
         echo "Parsed config:"
         jq '.' /tmp/config.json
+
+        # Diagnostic skip list (space separated, empty by default). Consumed by
+        # scripts/diag_skip.sh in the steps that apply unconditional patches.
+        SKIP_PATCHES_RAW='${{ inputs.skip_patches }}'
+        SKIP_PATCHES_NORM="$(printf '%s' "$SKIP_PATCHES_RAW" | tr ',' ' ' | tr -s ' ' | sed -e 's/^ //' -e 's/ $//')"
+        echo "OP_SKIP_PATCHES=$SKIP_PATCHES_NORM" >> "$GITHUB_ENV"
+        if [ -n "$SKIP_PATCHES_NORM" ]; then
+          echo "::warning::diagnostic mode: skipping [$SKIP_PATCHES_NORM]"
+        fi
 
     - name: Validate Inputs
       shell: bash
@@ -1868,9 +1882,12 @@ runs:
         set -euo pipefail
         echo "::group::Apply Other patches"
         cd "$COMMON_KERNEL_FOLDER"
+        source "$GITHUB_WORKSPACE/scripts/diag_skip.sh"
         KERNEL_VERSION="${{ env.KERNEL_VER }}"
         MIN_VERSION="5.16"
-        if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
+        if skip_patch ptrace; then
+          echo "::warning::diag: gki_ptrace.patch SKIPPED (OP_SKIP_PATCHES)"
+        elif [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
           echo "Patching ptrace!"
           patch -p1 -F 3 < "$KERNEL_PATCHES_FOLDER/gki_ptrace.patch"
         else
@@ -1904,12 +1921,18 @@ runs:
           echo "Hmbird not enabled, skipping fengchi patch"
         fi
 
-        echo "Patching module intercept and overlay mechanism"
-        patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/module_overlay/0001-module-Add-module-intercept-and-overlay-mechanism-$ANDROID_VER-$KERNEL_VER.patch"
-        if [ -d "$COMMON_KERNEL_FOLDER/kernel/module/module_overlay/" ]; then
-          chmod +x ./kernel/module/module_overlay/convert_overlay.sh
-        elif [ -d "$COMMON_KERNEL_FOLDER/kernel/module_overlay/" ]; then
-          chmod +x ./kernel/module_overlay/convert_overlay.sh
+        APPLY_MODULE_OVERLAY=1
+        if skip_patch module_overlay; then
+          echo "::warning::diag: module intercept/overlay patch SKIPPED (OP_SKIP_PATCHES)"
+          APPLY_MODULE_OVERLAY=0
+        else
+          echo "Patching module intercept and overlay mechanism"
+          patch -p1 < "$KERNEL_PATCHES_FOLDER/oneplus/module_overlay/0001-module-Add-module-intercept-and-overlay-mechanism-$ANDROID_VER-$KERNEL_VER.patch"
+          if [ -d "$COMMON_KERNEL_FOLDER/kernel/module/module_overlay/" ]; then
+            chmod +x ./kernel/module/module_overlay/convert_overlay.sh
+          elif [ -d "$COMMON_KERNEL_FOLDER/kernel/module_overlay/" ]; then
+            chmod +x ./kernel/module_overlay/convert_overlay.sh
+          fi
         fi
 
         copied_modules=""
@@ -1930,6 +1953,10 @@ runs:
           "_${KERNEL_FULL_VER}.ko"
         )
 
+        # The overlay .ko copy only makes sense when the patch was applied: it is
+        # the patch that creates kernel/module_overlay/modules/. Without that
+        # directory dest_path stays empty and `cp` would abort the whole step.
+        if [ "$APPLY_MODULE_OVERLAY" = "1" ]; then
         while IFS= read -r -d '' file; do
           filename="${file##*/}"
           module_name=""
@@ -1985,15 +2012,20 @@ runs:
           fi
           
           if [ -z "$dest_path" ]; then
-            cp -v -- "$file" "$dest_path"
+            echo "::warning::no overlay modules dir for $module_name; skipped"
+            continue
           fi
-          
+          cp -v -- "$file" "$dest_path"
+
           if [ -z "$copied_modules" ]; then
             copied_modules="$dest_path"
           else
             copied_modules="$copied_modules:$dest_path"
           fi
         done
+        else
+          echo "::warning::diag: overlay modules not embedded (OP_SKIP_PATCHES)"
+        fi
 
         ccache --set-config=extra_files_to_hash="$copied_modules"
         
@@ -2139,6 +2171,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        source "$GITHUB_WORKSPACE/scripts/diag_skip.sh"
+        if skip_patch tmpfs; then
+          echo "::warning::diag: CONFIG_TMPFS_XATTR/_POSIX_ACL not forced (OP_SKIP_PATCHES)"
+          exit 0
+        fi
         echo "Add Tmpfs Support"
         cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         CONFIG_TMPFS_XATTR=y
@@ -2183,7 +2220,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        source "$GITHUB_WORKSPACE/scripts/diag_skip.sh"
         echo "Enable Important Net Schedulers (qdisc)"
+        if skip_patch netsch; then
+          echo "::warning::diag: CAKE/PIE/FQ_PIE not forced (OP_SKIP_PATCHES)"
+          cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
+        CONFIG_NET_SCH_FQ=y
+        CONFIG_NET_SCH_FQ_CODEL=y
+        EOF
+          exit 0
+        fi
         cat >> "$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig" <<EOF
         CONFIG_NET_SCH_FQ=y
         CONFIG_NET_SCH_FQ_CODEL=y
@@ -2545,6 +2591,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        source "$GITHUB_WORKSPACE/scripts/diag_skip.sh"
+        if skip_patch fake_config; then
+          echo "::warning::diag: fake_config.patch SKIPPED (OP_SKIP_PATCHES)"
+          echo "CONFIG_FAKE_DISABLE=" >> "$GITHUB_ENV"
+          exit 0
+        fi
         echo "Apply Fake config.gz patch"
         cd "$COMMON_KERNEL_FOLDER"
         patch -p1 < "$KERNEL_PATCHES_FOLDER/common/fake_config.patch"
@@ -3185,12 +3237,18 @@ runs:
         # and stamp a ui_print line so the flashing log shows which build ran.
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
-          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (FULL: no Re-Kernel/NoMount)"' anykernel.sh
-          grep -q 'FULL: no Re-Kernel' anykernel.sh || {
+          # Stamp which ablation produced this image, so the flashing log alone
+          # says what actually landed on the device.
+          DIAG_TAG="${OP_SKIP_PATCHES:-}"
+          DIAG_TAG="${DIAG_TAG// /-}"
+          [ -n "$DIAG_TAG" ] || DIAG_TAG="none"
+          BANNER="${{ inputs.ksu_type }} ${KSUVER:-unknown} ACE3 5.15.197 [skip:$DIAG_TAG]"
+          sed -i "/^\. tools\/ak3-core\.sh\$/a ui_print \" \" \"  -> ${BANNER}\"" anykernel.sh
+          grep -qF "[skip:$DIAG_TAG]" anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
-          echo "AK3: boot version guard disabled, banner stamped"
+          echo "AK3: boot version guard disabled, banner stamped: $BANNER"
         else
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=1/' anykernel.sh
         fi
@@ -3218,6 +3276,10 @@ runs:
           ZIP_MODEL="$MODEL_FLAT"
         fi
         ZIP_NAME="${{ inputs.ksu_type }}-${KSUVER:-unknown}-${ZIP_MODEL}-${ZIP_KERNEL_VER}-${OP_OS_VERSION}-AnyKernel3.zip"
+        # Diagnostic builds carry the ablation in the artifact name too.
+        if [ -n "${OP_SKIP_PATCHES:-}" ]; then
+          ZIP_NAME="${ZIP_NAME%.zip}-skip-${OP_SKIP_PATCHES// /+}.zip"
+        fi
         mkdir -p "$ARTIFACTS_FOLDER"
         echo "kernel_release=$KERNEL_RELEASE" >> "$GITHUB_OUTPUT"
         
