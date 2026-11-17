@@ -1395,6 +1395,7 @@ runs:
         KSU_CERT_HASH: ${{ inputs.ksu_cert_hash }}
       run: |
         set -euo pipefail
+        if [ "${OP_SUSFS}" != "true" ]; then echo "diag(noksu): KSU/SUSFS skipped for the bare-kernel control build"; echo "KSUVER=0" >> "$GITHUB_ENV"; echo "KSU_COMMIT_SHA=none" >> "$GITHUB_ENV"; exit 0; fi
         echo "::group::Add FinaSU"
         cd "$KERNEL_PLATFORM_FOLDER"
         echo "Adding FinaSU..."
@@ -3185,8 +3186,8 @@ runs:
         # and stamp a ui_print line so the flashing log shows which build ran.
         if [ "${OP_MODEL}" = "OP-ACE-3-5.15.197" ]; then
           sed -i 's/do.check_boot_version=.*/do.check_boot_version=0/' anykernel.sh
-          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (fix2: no boot-version guard)"' anykernel.sh
-          grep -q 'no boot-version guard' anykernel.sh || {
+          sed -i '/^\. tools\/ak3-core\.sh$/a ui_print " " "  -> FinaSU-33204 ACE3 5.15.197 (NOKSU: no KernelSU no SUSFS)"' anykernel.sh
+          grep -q 'NOKSU' anykernel.sh || {
             echo "::error::failed to stamp the AK3 banner line"
             exit 1
           }
